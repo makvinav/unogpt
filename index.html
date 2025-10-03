@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>UnoGPT</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Roboto',sans-serif;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#0f2027,#203a43,#2c5364);color:#fff;overflow:hidden;}
+canvas#particles{position:fixed;top:0;left:0;width:100%;height:100%;z-index:-1;}
+.chat-title{font-size:48px;text-align:center;margin-bottom:20px;}
+.chat-container{width:450px;max-width:90%;height:600px;background:rgba(0,0,0,0.7);border-radius:20px;display:flex;flex-direction:column;overflow:hidden;}
+#chat{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:10px;}
+.message{padding:12px 18px;border-radius:20px;max-width:70%;word-wrap:break-word;white-space:pre-wrap;opacity:0;transform:translateY(20px);animation:appear 0.5s forwards;}
+.user{background:#4b9ce2;color:#fff;align-self:flex-end;}
+.gpt{background:#222;color:#fff;align-self:flex-start;}
+#input-container{display:flex;padding:10px;background:rgba(255,255,255,0.05);border-top:1px solid rgba(255,255,255,0.1);}
+#user-input{flex:1;padding:10px 15px;border-radius:15px;border:none;outline:none;font-size:16px;background:rgba(255,255,255,0.1);color:#fff;}
+#send-btn{padding:10px 20px;margin-left:10px;border-radius:15px;border:none;background:#4b9ce2;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.rotating{width:18px;height:18px;border:2px solid #fff;animation:spin 1s linear infinite;display:block;}
+@keyframes spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
+@keyframes appear{to{opacity:1;transform:translateY(0);}}
+</style>
+</head>
+<body>
+<canvas id="particles"></canvas>
+<h1 class="chat-title">UnoGPT</h1>
+<div class="chat-container">
+  <div id="chat"></div>
+  <div id="input-container">
+    <input type="text" id="user-input" placeholder="Напишите сообщение..."/>
+    <button id="send-btn">Отправить</button>
+  </div>
+</div>
+
+<script>
+// ===== Летающие точки =====
+const canvas=document.getElementById('particles'), ctx=canvas.getContext('2d'); let particlesArray=[];
+canvas.width=window.innerWidth; canvas.height=window.innerHeight;
+class Particle{constructor(){this.x=Math.random()*canvas.width;this.y=Math.random()*canvas.height;this.size=Math.random()*3+1;this.speedX=Math.random()*1-0.5;this.speedY=Math.random()*1-0.5;}update(){this.x+=this.speedX;this.y+=this.speedY;if(this.x<0||this.x>canvas.width)this.speedX*=-1;if(this.y<0||this.y>canvas.height)this.speedY*=-1;}draw(){ctx.fillStyle='rgba(255,255,255,0.6)';ctx.beginPath();ctx.arc(this.x,this.y,this.size,0,Math.PI*2);ctx.fill();}}
+function initParticles(){particlesArray=[];for(let i=0;i<100;i++){particlesArray.push(new Particle());}}
+initParticles();
+function animate(){ctx.clearRect(0,0,canvas.width,canvas.height);particlesArray.forEach(p=>{p.update();p.draw();});requestAnimationFrame(animate);}
+animate();
+window.addEventListener('resize',()=>{canvas.width=window.innerWidth;canvas.height=window.innerHeight;initParticles();});
+
+// ===== Чат =====
+const chat=document.getElementById('chat'), input=document.getElementById('user-input'), sendBtn=document.getElementById('send-btn');
+let controller=null,isGenerating=false,typingInterval=null;
+
+function addMessage(text,sender){const msg=document.createElement('div');msg.classList.add('message',sender);msg.textContent=text;chat.appendChild(msg);chat.scrollTop=chat.scrollHeight;return msg;}
+
+async function sendMessage(){
+if(isGenerating){if(controller)controller.abort();stopTyping();resetButton();return;}
+const message=input.value.trim();if(!message)return;
+addMessage(message,'user');input.value='';
+changeButtonToStop();isGenerating=true;controller=new AbortController();
+let reply='';
+try{
+const res=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message}),signal:controller.signal});
+const data=await res.json();
+reply=data.reply;
+}catch(err){
+if(err.name==="AbortError")reply="⛔ Ответ остановлен";
+else reply="Ошибка: не удалось получить ответ";
+}
+simulateGPTTyping(reply);
+}
+
+function simulateGPTTyping(reply){
+const gptMsg=addMessage('','gpt');let i=0;typingInterval=setInterval(()=>{if(i<reply.length){gptMsg.textContent+=reply[i];i++;chat.scrollTop=chat.scrollHeight;}else{stopTyping();resetButton();}},30);
+}
+
+function stopTyping(){if(typingInterval)clearInterval(typingInterval);typingInterval=null;}
+function changeButtonToStop(){sendBtn.innerHTML='';const square=document.createElement('span');square.classList.add('rotating');sendBtn.appendChild(square);sendBtn.style.background="#e24b4b";isGenerating=true;}
+function resetButton(){sendBtn.innerHTML='Отправить';sendBtn.style.background="#4b9ce2";isGenerating=false;controller=null;}
+
+sendBtn.addEventListener('click',sendMessage);
+input.addEventListener('keypress',e=>{if(e.key==='Enter')sendMessage();});
+</script>
+</body>
+</html>
